@@ -20,6 +20,7 @@ from tqdm import tqdm
 import os
 import warnings
 from scipy.stats import entropy
+pip install plotly
 
 
 
@@ -560,3 +561,90 @@ def save_shap_numpy(shap_values, save_path="shap_values.npy"):
     shap_array = _get_shap_array(shap_values)
     np.save(save_path, shap_array)
     print(f"✅ Saved SHAP values to: {save_path}")
+import os
+import numpy as np
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+def plot_emg_shap_4d(inputs, shap_values, output_path):
+    """4D interactive plot of SHAP values using Plotly"""
+    # Ensure HTML format
+    if not output_path.endswith('.html'):
+        output_path = os.path.splitext(output_path)[0] + ".html"
+    
+    # If torch tensor, convert to numpy
+    if hasattr(inputs, "detach"):
+        inputs = inputs.detach().cpu().numpy()
+    if hasattr(shap_values, "values"):
+        shap_vals = shap_values.values
+    else:
+        shap_vals = shap_values
+    shap_vals = np.asarray(shap_vals)
+    
+    # For first sample only
+    sample_idx = 0
+    inputs = inputs[sample_idx]
+    shap_vals = shap_vals[sample_idx]
+    
+    # Safely reduce dimensions - remove all singleton dimensions
+    shap_vals = np.squeeze(shap_vals)
+    inputs = np.squeeze(inputs)
+    
+    # Get the number of time steps from input shape
+    n_timesteps = inputs.shape[-1]
+    
+    # If SHAP values have more dimensions than expected, take first n_timesteps
+    if shap_vals.ndim == 1:
+        shap_vals = shap_vals.reshape(1, -1)
+    elif shap_vals.ndim > 1:
+        shap_vals = shap_vals.reshape(shap_vals.shape[0], -1)
+        shap_vals = shap_vals[:, :n_timesteps]
+    
+    # Ensure we have 2D array (channels, time_steps)
+    if shap_vals.ndim == 1:
+        shap_vals = shap_vals.reshape(1, n_timesteps)
+    elif shap_vals.ndim > 2:
+        shap_vals = shap_vals.reshape(-1, n_timesteps)
+    
+    n_channels = shap_vals.shape[0]
+    
+    # Create time steps array
+    time_steps = np.arange(n_timesteps)
+    
+    # Create Plotly figure
+    fig = make_subplots(rows=1, cols=1, specs=[[{'type': 'scatter3d'}]])
+    
+    # Add traces for each channel
+    for ch in range(n_channels):
+        shap_mag = np.abs(shap_vals[ch])
+        # Ensure arrays have same length
+        if len(shap_mag) != len(time_steps):
+            min_len = min(len(shap_mag), len(time_steps))
+            shap_mag = shap_mag[:min_len]
+            ch_time_steps = time_steps[:min_len]
+        else:
+            ch_time_steps = time_steps
+        fig.add_trace(go.Scatter3d(
+            x=ch_time_steps,
+            y=np.full_like(ch_time_steps, ch),
+            z=shap_mag,
+            mode='lines',
+            name=f'Channel {ch+1}',
+            line=dict(width=4)
+        ))
+    
+    # Set layout
+    fig.update_layout(
+        title='4D SHAP Value Distribution (Sample 0)',
+        scene=dict(
+            xaxis_title='Time Steps',
+            yaxis_title='EMG Channels',
+            zaxis_title='|SHAP Value|'
+        ),
+        height=800,
+        width=1000
+    )
+    
+    # Save as HTML
+    fig.write_html(output_path, include_plotlyjs='cdn')
+    print(f"✅ Saved interactive 4D SHAP plot: {output_path}")
