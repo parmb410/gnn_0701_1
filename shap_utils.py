@@ -1,4 +1,9 @@
 import shap
+
+# === Monkey-patch to avoid transformers import errors in SHAP ===
+if hasattr(shap, "utils") and hasattr(shap.utils, "transformers"):
+    shap.utils.transformers.is_transformers_lm = lambda x: False
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -83,13 +88,20 @@ def safe_compute_shap_values(model, background, inputs, nsamples=200):
     """
     # Create the explainer with our safe wrapper
     wrapped_model = PredictWrapper(model)
-    
-    # Use DeepExplainer for model-specific interpretation
-    explainer = shap.DeepExplainer(
-        wrapped_model,
-        background,
-    )
-    
+
+    # Use GradientExplainer for most torch models (recommended)
+    try:
+        explainer = shap.GradientExplainer(
+            wrapped_model,
+            background,
+        )
+    except Exception as e:
+        print(f"[SHAP] GradientExplainer failed ({e}), falling back to DeepExplainer")
+        explainer = shap.DeepExplainer(
+            wrapped_model,
+            background,
+        )
+
     # Compute SHAP values without additivity check
     shap_values = explainer.shap_values(
         inputs,
@@ -475,242 +487,3 @@ def evaluate_advanced_shap_metrics(shap_values, inputs):
     # Compute all metrics
     metrics = {
         'shap_entropy': compute_shap_entropy(shap_values),
-        'feature_coherence': compute_feature_coherence(shap_values),
-        'channel_variance': np.var(shap_vals, axis=(0, 2, 3)).mean(),
-        'temporal_entropy': entropy(np.abs(shap_vals).mean(axis=(0, 1, 2)).ravel()),
-        'mutual_info': mutual_info_score(input_bins, shap_bins),
-        'pca_alignment': compute_pca_alignment(shap_values)
-    }
-    
-    # Convert all values to Python floats for safe formatting
-    return {k: float(v) for k, v in metrics.items()}
-# ================== 4D Visualizations =====================
-
-def plot_emg_shap_4d(inputs, shap_values, output_path):
-    """4D interactive plot of SHAP values using Plotly"""
-    # Ensure HTML format
-    if not output_path.endswith('.html'):
-        output_path = os.path.splitext(output_path)[0] + ".html"
-    
-    inputs = to_numpy(inputs)
-    
-    # Extract SHAP values array
-    shap_vals = to_numpy(_get_shap_array(shap_values))
-    
-    # For first sample only
-    sample_idx = 0
-    inputs = inputs[sample_idx]
-    shap_vals = shap_vals[sample_idx]
-    
-    # Safely reduce dimensions - remove all singleton dimensions
-    shap_vals = np.squeeze(shap_vals)
-    
-    # Get the number of time steps from input shape
-    n_timesteps = inputs.shape[-1]
-    
-    # If SHAP values have more dimensions than expected, take first n_timesteps
-    if shap_vals.ndim == 1:
-        shap_vals = shap_vals.reshape(1, -1)
-    elif shap_vals.ndim > 1:
-        shap_vals = shap_vals.reshape(shap_vals.shape[0], -1)
-        shap_vals = shap_vals[:, :n_timesteps]
-    
-    # Ensure we have 2D array (channels, time_steps)
-    if shap_vals.ndim == 1:
-        shap_vals = shap_vals.reshape(1, n_timesteps)
-    elif shap_vals.ndim > 2:
-        shap_vals = shap_vals.reshape(-1, n_timesteps)
-    
-    n_channels = shap_vals.shape[0]
-    
-    # Create time steps array
-    time_steps = np.arange(n_timesteps)
-    
-    # Create Plotly figure
-    fig = make_subplots(rows=1, cols=1, specs=[[{'type': 'scatter3d'}]])
-    
-    # Add traces for each channel
-    for ch in range(n_channels):
-        shap_mag = np.abs(shap_vals[ch])
-        
-        # Ensure arrays have same length
-        if len(shap_mag) != len(time_steps):
-            min_len = min(len(shap_mag), len(time_steps))
-            shap_mag = shap_mag[:min_len]
-            ch_time_steps = time_steps[:min_len]
-        else:
-            ch_time_steps = time_steps
-        
-        fig.add_trace(go.Scatter3d(
-            x=ch_time_steps,
-            y=np.full_like(ch_time_steps, ch),  # Constant channel index
-            z=shap_mag,
-            mode='lines',
-            name=f'Channel {ch+1}',
-            line=dict(width=4)
-        ))
-    
-    # Set layout
-    fig.update_layout(
-        title='4D SHAP Value Distribution (Sample 0)',
-        scene=dict(
-            xaxis_title='Time Steps',
-            yaxis_title='EMG Channels',
-            zaxis_title='|SHAP Value|'
-        ),
-        height=800,
-        width=1000
-    )
-    
-    # Save as HTML
-    fig.write_html(output_path, include_plotlyjs='cdn')
-    print(f"✅ Saved interactive 4D SHAP plot: {output_path}")
-
-def plot_4d_shap_surface(shap_values, output_path):
-    """Interactive surface plot of aggregated SHAP values using Plotly"""
-    # Ensure HTML format
-    if not output_path.endswith('.html'):
-        output_path = os.path.splitext(output_path)[0] + ".html"
-    
-    # Extract SHAP values array
-    shap_vals = to_numpy(_get_shap_array(shap_values))
-    
-    # Safely reduce dimensions
-    shap_vals = np.squeeze(shap_vals)
-    
-    # Handle different dimensions
-    if shap_vals.ndim == 4:
-        # Average across spatial dimension: (batch, channels, spatial, time) -> (batch, channels, time)
-        shap_vals = shap_vals.mean(axis=2)
-    
-    # Aggregate across samples
-    if shap_vals.ndim == 3:
-        # (batch, channels, time) -> (channels, time)
-        aggregated = np.abs(shap_vals).mean(axis=0)
-    elif shap_vals.ndim == 2:
-        # (channels, time)
-        aggregated = np.abs(shap_vals)
-    else:
-        raise ValueError(f"Unsupported SHAP dimension: {shap_vals.ndim}")
-    
-    # Ensure proper orientation: (channels, time)
-    if aggregated.shape[0] > aggregated.shape[1]:
-        aggregated = aggregated.T
-    
-    # Create grid
-    channels = np.arange(aggregated.shape[0])
-    time_steps = np.arange(aggregated.shape[1])
-    X, Y = np.meshgrid(time_steps, channels)
-    
-    # Create Plotly surface plot
-    fig = go.Figure(data=[
-        go.Surface(
-            z=aggregated,
-            x=X,  # Time steps
-            y=Y,  # Channels
-            colorscale='Viridis',
-            opacity=0.9,
-            contours={
-                "z": {"show": True, "usecolormap": True, "highlightcolor": "limegreen", "project_z": True}
-            }
-        )
-    ])
-    
-    # Customize layout
-    fig.update_layout(
-        title='SHAP Value Surface (Avg Across Samples)',
-        scene=dict(
-            xaxis_title='Time Steps',
-            yaxis_title='EMG Channels',
-            zaxis_title='|SHAP Value|',
-            camera=dict(
-                eye=dict(x=1.5, y=-1.5, z=0.5)  # Adjust camera angle for better view
-            )
-        ),
-        margin=dict(l=0, r=0, b=0, t=40),
-        height=800,
-        width=1000
-    )
-    
-    # Add colorbar
-    fig.update_layout(coloraxis_colorbar=dict(
-        title="|SHAP|",
-        thickness=15,
-        len=0.5
-    ))
-    
-    # Save as HTML
-    fig.write_html(output_path, include_plotlyjs='cdn')
-    print(f"✅ Saved interactive SHAP surface plot: {output_path}")
-
-# ================== Similarity Metrics =====================
-
-def compute_kendall_tau(shap1, shap2):
-    """
-    Compute Kendall's tau correlation between two SHAP arrays
-    Args:
-        shap1: First SHAP array (numpy array)
-        shap2: Second SHAP array (numpy array)
-    Returns:
-        Kendall's tau correlation coefficient
-    """
-    # Flatten arrays and compute correlation
-    flat1 = np.abs(shap1).flatten()
-    flat2 = np.abs(shap2).flatten()
-    return kendalltau(flat1, flat2)[0]
-
-def cosine_similarity_shap(shap1, shap2):
-    """
-    Compute cosine similarity between two SHAP arrays
-    Args:
-        shap1: First SHAP array (numpy array)
-        shap2: Second SHAP array (numpy array)
-    Returns:
-        Cosine similarity score (0-1)
-    """
-    # Flatten arrays and compute similarity
-    flat1 = np.abs(shap1).flatten()
-    flat2 = np.abs(shap2).flatten()
-    return 1 - cosine(flat1, flat2)
-
-def log_shap_values(shap_array):
-    """
-    Apply log transformation to SHAP values
-    Args:
-        shap_array: SHAP values array
-    Returns:
-        Log-transformed array (with safeguard for zero values)
-    """
-    # Take absolute value and add epsilon to avoid log(0)
-    abs_shap = np.abs(shap_array)
-    return np.log(abs_shap + 1e-12)
-
-def compute_jaccard_topk(shap1, shap2, k=10):
-    """
-    Compute Jaccard similarity between top-k features of two SHAP arrays
-    Args:
-        shap1: First SHAP array (numpy array)
-        shap2: Second SHAP array (numpy array)
-        k: Number of top features to consider
-    Returns:
-        Jaccard similarity score (0-1)
-    """
-    # Flatten arrays and get top-k indices
-    flat1 = np.abs(shap1).flatten()
-    flat2 = np.abs(shap2).flatten()
-    
-    # Get top-k indices for each array
-    top1 = set(np.argsort(-flat1)[:k])
-    top2 = set(np.argsort(-flat2)[:k])
-    
-    # Compute Jaccard similarity
-    intersection = len(top1.intersection(top2))
-    union = len(top1.union(top2))
-    return intersection / union if union > 0 else 0
-
-# ✅ Save SHAP values
-def save_shap_numpy(shap_values, save_path="shap_values.npy"):
-    """Save SHAP values to numpy file"""
-    shap_array = _get_shap_array(shap_values)
-    np.save(save_path, shap_array)
-    print(f"✅ Saved SHAP values to: {save_path}")
