@@ -65,10 +65,12 @@ def safe_compute_shap_values(model, background, inputs, nsamples=200):
     except Exception:
         explainer = shap.GradientExplainer(wrapped_model, background)
         shap_values = explainer.shap_values(inputs)
+    # Use .expected_value only if it exists
+    base_values = getattr(explainer, "expected_value", None)
     # Convert to SHAP Explanation object for better handling
     return shap.Explanation(
         values=shap_values,
-        base_values=explainer.expected_value,
+        base_values=base_values,
         data=to_numpy(inputs)
     )
 
