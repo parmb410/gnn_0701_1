@@ -37,6 +37,8 @@ from shap_utils import (
     compute_aopc, compute_feature_coherence, compute_shap_entropy,
     plot_emg_shap_4d, plot_4d_shap_surface, evaluate_advanced_shap_metrics
 )
+import shap
+shap.utils.transformers.is_transformers_lm = lambda x: False
 
 # ======================= GNN INTEGRATION START =======================
 try:
