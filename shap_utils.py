@@ -546,3 +546,17 @@ def evaluate_advanced_shap_metrics(shap_values, inputs):
     
     # Convert all values to Python floats for safe formatting
     return {k: float(v) for k, v in metrics.items()}
+
+def save_shap_numpy(shap_values, save_path="shap_values.npy"):
+    """Save SHAP values to numpy file"""
+    # Helper to get array from Explanation object or list
+    def _get_shap_array(shap_values):
+        if isinstance(shap_values, list):
+            return shap_values[0].values if hasattr(shap_values[0], 'values') else np.array(shap_values[0])
+        elif hasattr(shap_values, 'values'):
+            return shap_values.values
+        return shap_values
+
+    shap_array = _get_shap_array(shap_values)
+    np.save(save_path, shap_array)
+    print(f"✅ Saved SHAP values to: {save_path}")
