@@ -457,6 +457,28 @@ def compute_pca_alignment(shap_values):
     # Compute explained variance ratio
     return pca.explained_variance_ratio_.sum()
 
+def compute_jaccard_topk(shap1, shap2, k=10):
+    """
+    Compute Jaccard similarity between top-k features of two SHAP arrays
+    Args:
+        shap1: First SHAP array (numpy array)
+        shap2: Second SHAP array (numpy array)
+        k: Number of top features to consider
+    Returns:
+        Jaccard similarity score (0-1)
+    """
+    # Flatten arrays and get top-k indices
+    flat1 = np.abs(shap1).flatten()
+    flat2 = np.abs(shap2).flatten()
+    
+    # Get top-k indices for each array
+    top1 = set(np.argsort(-flat1)[:k])
+    top2 = set(np.argsort(-flat2)[:k])
+    
+    # Compute Jaccard similarity
+    intersection = len(top1.intersection(top2))
+    union = len(top1.union(top2))
+    return intersection / union if union > 0 else 0
 def evaluate_advanced_shap_metrics(shap_values, inputs):
     """Compute a suite of advanced SHAP metrics and return Python floats"""
     # Extract SHAP values array
