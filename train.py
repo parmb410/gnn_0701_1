@@ -113,31 +113,57 @@ def calculate_h_divergence(features_source, features_target):
 def transform_for_gnn(x):
     if not GNN_AVAILABLE:
         return x
-    
+
     from torch_geometric.data import Data
     from torch_geometric.utils import to_dense_batch
+
+    # If x is a list, try to stack or index into the first element
+    if isinstance(x, list):
+        # If x is a list of tensors (e.g., from a DataLoader batch)
+        if all(isinstance(xx, torch.Tensor) for xx in x):
+            try:
+                x = torch.stack(x)
+            except Exception:
+                # fallback: just use the first tensor (batch size 1 fallback)
+                x = x[0]
+        # If x is a list of Data objects (PyG)
+        elif all(hasattr(xx, 'x') and hasattr(xx, 'batch') for xx in x):
+            # Batch the data objects
+            from torch_geometric.data import Batch
+            x = Batch.from_data_list(x)
+        else:
+            # fallback: use first element if possible
+            x = x[0]
     
+    # If x is still a Data object (PyG)
     if isinstance(x, Data):
         x_dense, mask = to_dense_batch(x.x, x.batch)
-        return x_dense
+        x = x_dense
+
+    # If x is a numpy array, convert to tensor
+    if isinstance(x, np.ndarray):
+        x = torch.from_numpy(x).float()
     
-    if x.dim() == 4:
-        if x.size(1) == 8 or x.size(1) == 200:
-            return x.squeeze(2).permute(0, 2, 1)
-        elif x.size(2) == 8 or x.size(2) == 200:
-            return x.squeeze(1).permute(0, 2, 1)
-        elif x.size(3) == 8 or x.size(3) == 200:
-            return x.squeeze(2)
-        elif x.size(3) == 1 and (x.size(2) == 8 or x.size(2) == 200):
-            return x.squeeze(3)
-    
-    elif x.dim() == 3:
-        if x.size(1) == 8 or x.size(1) == 200:
-            return x.permute(0, 2, 1)
-        elif x.size(2) == 8 or x.size(2) == 200:
-            return x
-    
-    raise ValueError(f"Cannot transform input shape {x.shape} for GNN")
+    # At this point, x should be a tensor
+    if hasattr(x, 'dim'):
+        if x.dim() == 4:
+            if x.size(1) == 8 or x.size(1) == 200:
+                return x.squeeze(2).permute(0, 2, 1)
+            elif x.size(2) == 8 or x.size(2) == 200:
+                return x.squeeze(1).permute(0, 2, 1)
+            elif x.size(3) == 8 or x.size(3) == 200:
+                return x.squeeze(2)
+            elif x.size(3) == 1 and (x.size(2) == 8 or x.size(2) == 200):
+                return x.squeeze(3)
+        elif x.dim() == 3:
+            if x.size(1) == 8 or x.size(1) == 200:
+                return x.permute(0, 2, 1)
+            elif x.size(2) == 8 or x.size(2) == 200:
+                return x
+        # else, let error fall through
+        raise ValueError(f"Cannot transform input shape {x.shape} for GNN")
+    else:
+        raise TypeError(f"Input to transform_for_gnn must be a tensor/array, got {type(x)}")
 
 # ======================= TEMPORAL CONVOLUTION BLOCK =======================
 class TemporalBlock(nn.Module):
