@@ -967,47 +967,55 @@ def main(args):
     
     # ======================= SHAP EXPLAINABILITY =======================
     if getattr(args, 'enable_shap', False):
-    print("\n📊 Running SHAP explainability...")
-    try:
-        # Prepare background and evaluation data
-        for data in valid_loader:
-            x = data[0]
-            # If x is a list, handle all possible formats robustly
-            if isinstance(x, list):
-                if all(isinstance(xx, torch.Tensor) for xx in x):
-                    x = torch.stack(x)
-                elif all(isinstance(xx, Data) for xx in x):
-                    from torch_geometric.data import Batch
-                    x = Batch.from_data_list(x)
+        print("\n📊 Running SHAP explainability...")
+        try:
+            # Prepare background and evaluation data
+            found_batch = False
+            for data in valid_loader:
+                x = data[0]
+                # Handle all common dataloader return formats
+                if isinstance(x, list):
+                    # List of Tensors or Data objects
+                    if all(isinstance(xx, torch.Tensor) for xx in x):
+                        x = torch.stack(x)
+                    elif all(hasattr(xx, 'x') and hasattr(xx, 'batch') for xx in x):
+                        from torch_geometric.data import Batch
+                        x = Batch.from_data_list(x)
+                    else:
+                        x = x[0]  # fallback
+                # Now x should be a Tensor or Batch/Data object
+                if hasattr(x, 'to'):
+                    background = x[:64].to(args.device)
+                    X_eval = x[:10].to(args.device)
                 else:
-                    x = x[0]  # fallback
-            # Now x should be a tensor or Batch
-            if hasattr(x, 'to'):
-                background = x[:64].to(args.device)
-                X_eval = x[:10].to(args.device)
-            else:
-                x = torch.tensor(x)
-                background = x[:64].to(args.device)
-                X_eval = x[:10].to(args.device)
-            break
-            else:
-                background = get_background_batch(valid_loader, size=64).to(args.device)
-                X_eval = background[:10]
+                    # try converting to tensor
+                    x = torch.tensor(x)
+                    background = x[:64].to(args.device)
+                    X_eval = x[:10].to(args.device)
+                found_batch = True
+                break
+            if not found_batch:
+                raise RuntimeError("No valid batch found in valid_loader for SHAP background.")
             # Disable inplace operations in the model
             disable_inplace_relu(algorithm)
+
             # Create transform wrapper for GNN if needed
             transform_fn = transform_for_gnn if args.use_gnn and GNN_AVAILABLE else None
+
             # Transform background and X_eval if necessary
             if transform_fn is not None:
                 background = transform_fn(background)
                 X_eval = transform_fn(X_eval)
                 background = background.to(args.device)
                 X_eval = X_eval.to(args.device)
+
             # Compute SHAP values safely (no device mismatch)
             shap_explanation = safe_compute_shap_values(algorithm, background, X_eval)
             shap_vals = shap_explanation.values
             print(f"SHAP values shape: {shap_vals.shape}")
+
             X_eval_np = X_eval.detach().cpu().numpy()
+
             # Handle GNN dimensionality for visualization
             if args.use_gnn and GNN_AVAILABLE:
                 print(f"Original SHAP values shape: {shap_vals.shape}")
