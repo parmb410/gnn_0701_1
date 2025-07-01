@@ -21,6 +21,21 @@ import os
 import warnings
 from scipy.stats import entropy
 
+
+
+def cosine_similarity_shap(shap1, shap2):
+    """
+    Compute cosine similarity between two SHAP arrays
+    Args:
+        shap1: First SHAP array (numpy array)
+        shap2: Second SHAP array (numpy array)
+    Returns:
+        Cosine similarity score (0-1)
+    """
+    # Flatten arrays and compute similarity
+    flat1 = np.abs(shap1).flatten()
+    flat2 = np.abs(shap2).flatten()
+    return 1 - cosine(flat1, flat2)
 def compute_kendall_tau(shap1, shap2):
     """
     Compute Kendall's tau correlation between two SHAP arrays
