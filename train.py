@@ -969,37 +969,37 @@ def main(args):
     if getattr(args, 'enable_shap', False):
         print("\n📊 Running SHAP explainability...")
         try:
+            from torch_geometric.data import Batch
             # Prepare background and evaluation data
             if args.use_gnn and GNN_AVAILABLE:
-                # Get a batch from valid_loader for background and evaluation
                 for data in valid_loader:
-                    background = data[0][:64].to(args.device)
-                    X_eval = data[0][:10].to(args.device)
+                    # Data is likely tuple: ([Data, Data, ...], ...)
+                    data_list = data[0] if isinstance(data, (list, tuple)) else data
+                    if isinstance(data_list, list):
+                        pyg_batch = Batch.from_data_list(data_list).to(args.device)
+                    else:
+                        pyg_batch = data_list.to(args.device)
+                    background = pyg_batch[:64]
+                    X_eval = pyg_batch[:10]
                     break
             else:
                 background = get_background_batch(valid_loader, size=64).to(args.device)
                 X_eval = background[:10]
-
             # Disable inplace operations in the model
             disable_inplace_relu(algorithm)
-
             # Create transform wrapper for GNN if needed
             transform_fn = transform_for_gnn if args.use_gnn and GNN_AVAILABLE else None
-
             # Transform background and X_eval if necessary
             if transform_fn is not None:
                 background = transform_fn(background)
                 X_eval = transform_fn(X_eval)
                 background = background.to(args.device)
                 X_eval = X_eval.to(args.device)
-
             # Compute SHAP values safely (no device mismatch)
             shap_explanation = safe_compute_shap_values(algorithm, background, X_eval)
             shap_vals = shap_explanation.values
             print(f"SHAP values shape: {shap_vals.shape}")
-
             X_eval_np = X_eval.detach().cpu().numpy()
-
             # Handle GNN dimensionality for visualization
             if args.use_gnn and GNN_AVAILABLE:
                 print(f"Original SHAP values shape: {shap_vals.shape}")
