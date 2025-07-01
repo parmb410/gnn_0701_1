@@ -969,33 +969,43 @@ def main(args):
     if getattr(args, 'enable_shap', False):
         print("\n📊 Running SHAP explainability...")
         try:
-            # Prepare background and evaluation data
-            found_batch = False
-            for data in valid_loader:
-                x = data[0]
-                # Handle all common dataloader return formats
-                if isinstance(x, list):
-                    # List of Tensors or Data objects
-                    if all(isinstance(xx, torch.Tensor) for xx in x):
-                        x = torch.stack(x)
-                    elif all(hasattr(xx, 'x') and hasattr(xx, 'batch') for xx in x):
-                        from torch_geometric.data import Batch
-                        x = Batch.from_data_list(x)
-                    else:
-                        x = x[0]  # fallback
-                # Now x should be a Tensor or Batch/Data object
-                if hasattr(x, 'to'):
-                    background = x[:64].to(args.device)
-                    X_eval = x[:10].to(args.device)
+            # Get a single batch from valid_loader
+            data = next(iter(valid_loader))
+            x = data[0]
+            
+            # If x is a list (list of tensors or Data), stack or batch appropriately
+            if isinstance(x, list):
+                if all(isinstance(xx, torch.Tensor) for xx in x):
+                    x = torch.stack(x)
+                elif all(hasattr(xx, 'x') and hasattr(xx, 'batch') for xx in x):
+                    from torch_geometric.data import Batch
+                    x = Batch.from_data_list(x)
                 else:
-                    # try converting to tensor
-                    x = torch.tensor(x)
-                    background = x[:64].to(args.device)
-                    X_eval = x[:10].to(args.device)
-                found_batch = True
-                break
-            if not found_batch:
-                raise RuntimeError("No valid batch found in valid_loader for SHAP background.")
+                    # fallback: just use the first element (shouldn't happen with good DataLoader)
+                    x = x[0] if len(x) > 0 else x
+
+            # If x is still a list (very rare corner), convert first element
+            if isinstance(x, list):
+                x = x[0]
+
+            # Now x is a Tensor, Data, or Batch
+            if hasattr(x, 'to'):
+                x = x.to(args.device)
+            else:
+                x = torch.tensor(x).to(args.device)
+            
+            # Use slices for background and eval
+            if isinstance(x, torch.Tensor):
+                background = x[:64]
+                X_eval = x[:10]
+            elif hasattr(x, 'x') and hasattr(x, 'batch'):
+                # PyG Batch: need to create smaller batches for background/X_eval
+                from torch_geometric.data import Batch
+                data_list = x.to_data_list()
+                background = Batch.from_data_list(data_list[:64]).to(args.device)
+                X_eval = Batch.from_data_list(data_list[:10]).to(args.device)
+            else:
+                raise TypeError(f"Unsupported type for batch: {type(x)}")
             # Disable inplace operations in the model
             disable_inplace_relu(algorithm)
 
