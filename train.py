@@ -967,21 +967,29 @@ def main(args):
     
     # ======================= SHAP EXPLAINABILITY =======================
     if getattr(args, 'enable_shap', False):
-        print("\n📊 Running SHAP explainability...")
-        try:
-            from torch_geometric.data import Batch
-            # Prepare background and evaluation data
-            if args.use_gnn and GNN_AVAILABLE:
-                for data in valid_loader:
-                    # Data is likely tuple: ([Data, Data, ...], ...)
-                    data_list = data[0] if isinstance(data, (list, tuple)) else data
-                    if isinstance(data_list, list):
-                        pyg_batch = Batch.from_data_list(data_list).to(args.device)
-                    else:
-                        pyg_batch = data_list.to(args.device)
-                    background = pyg_batch[:64]
-                    X_eval = pyg_batch[:10]
-                    break
+    print("\n📊 Running SHAP explainability...")
+    try:
+        # Prepare background and evaluation data
+        for data in valid_loader:
+            x = data[0]
+            # If x is a list, handle all possible formats robustly
+            if isinstance(x, list):
+                if all(isinstance(xx, torch.Tensor) for xx in x):
+                    x = torch.stack(x)
+                elif all(isinstance(xx, Data) for xx in x):
+                    from torch_geometric.data import Batch
+                    x = Batch.from_data_list(x)
+                else:
+                    x = x[0]  # fallback
+            # Now x should be a tensor or Batch
+            if hasattr(x, 'to'):
+                background = x[:64].to(args.device)
+                X_eval = x[:10].to(args.device)
+            else:
+                x = torch.tensor(x)
+                background = x[:64].to(args.device)
+                X_eval = x[:10].to(args.device)
+            break
             else:
                 background = get_background_batch(valid_loader, size=64).to(args.device)
                 X_eval = background[:10]
