@@ -20,7 +20,6 @@ from tqdm import tqdm
 import os
 import warnings
 from scipy.stats import entropy
-pip install plotly
 
 
 
