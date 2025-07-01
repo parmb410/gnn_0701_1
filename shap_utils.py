@@ -21,6 +21,20 @@ import os
 import warnings
 from scipy.stats import entropy
 
+def compute_kendall_tau(shap1, shap2):
+    """
+    Compute Kendall's tau correlation between two SHAP arrays
+    Args:
+        shap1: First SHAP array (numpy array)
+        shap2: Second SHAP array (numpy array)
+    Returns:
+        Kendall's tau correlation coefficient
+    """
+    # Flatten arrays and compute correlation
+    flat1 = np.abs(shap1).flatten()
+    flat2 = np.abs(shap2).flatten()
+    return kendalltau(flat1, flat2)[0]
+
 # Helper function to safely convert tensors to numpy
 def to_numpy(tensor):
     """Safely convert tensor to numpy array with detachment"""
