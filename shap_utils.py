@@ -57,6 +57,25 @@ def get_background_batch(loader, size=64):
     return torch.cat(background, dim=0)[:size]
 
 def safe_compute_shap_values(model, background, inputs, nsamples=200):
+    # Get model device
+    if hasattr(model, "parameters"):
+        try:
+            device = next(model.parameters()).device
+        except StopIteration:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Move tensors to device
+    if isinstance(background, torch.Tensor):
+        background = background.to(device)
+    if isinstance(inputs, torch.Tensor):
+        inputs = inputs.to(device)
+    # If background/inputs are lists of tensors
+    if isinstance(background, list) and isinstance(background[0], torch.Tensor):
+        background = torch.stack(background).to(device)
+    if isinstance(inputs, list) and isinstance(inputs[0], torch.Tensor):
+        inputs = torch.stack(inputs).to(device)
+
     wrapped_model = PredictWrapper(model)
     # Try DeepExplainer, fallback to GradientExplainer if necessary
     try:
@@ -394,40 +413,4 @@ def plot_4d_shap_surface(shap_values, output_path):
         ),
         margin=dict(l=0, r=0, b=0, t=40),
         height=800,
-        width=1000
-    )
-    fig.update_layout(coloraxis_colorbar=dict(
-        title="|SHAP|",
-        thickness=15,
-        len=0.5
-    ))
-    fig.write_html(output_path, include_plotlyjs='cdn')
-    print(f"✅ Saved interactive SHAP surface plot: {output_path}")
-
-def compute_kendall_tau(shap1, shap2):
-    flat1 = np.abs(shap1).flatten()
-    flat2 = np.abs(shap2).flatten()
-    return kendalltau(flat1, flat2)[0]
-
-def cosine_similarity_shap(shap1, shap2):
-    flat1 = np.abs(shap1).flatten()
-    flat2 = np.abs(shap2).flatten()
-    return 1 - cosine(flat1, flat2)
-
-def log_shap_values(shap_array):
-    abs_shap = np.abs(shap_array)
-    return np.log(abs_shap + 1e-12)
-
-def compute_jaccard_topk(shap1, shap2, k=10):
-    flat1 = np.abs(shap1).flatten()
-    flat2 = np.abs(shap2).flatten()
-    top1 = set(np.argsort(-flat1)[:k])
-    top2 = set(np.argsort(-flat2)[:k])
-    intersection = len(top1.intersection(top2))
-    union = len(top1.union(top2))
-    return intersection / union if union > 0 else 0
-
-def save_shap_numpy(shap_values, save_path="shap_values.npy"):
-    shap_array = _get_shap_array(shap_values)
-    np.save(save_path, shap_array)
-    print(f"✅ Saved SHAP values to: {save_path}")
+        width=
