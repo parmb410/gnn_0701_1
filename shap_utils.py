@@ -413,4 +413,12 @@ def plot_4d_shap_surface(shap_values, output_path):
         ),
         margin=dict(l=0, r=0, b=0, t=40),
         height=800,
-        width=
+        width=1000,
+        coloraxis_colorbar=dict(
+            title="|SHAP|",
+            thickness=15,
+            len=0.5
+        )
+    )
+    fig.write_html(output_path, include_plotlyjs='cdn')
+    print(f"✅ Saved interactive SHAP surface plot: {output_path}")
