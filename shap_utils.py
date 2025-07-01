@@ -647,3 +647,73 @@ def plot_emg_shap_4d(inputs, shap_values, output_path):
     # Save as HTML
     fig.write_html(output_path, include_plotlyjs='cdn')
     print(f"✅ Saved interactive 4D SHAP plot: {output_path}")
+
+def plot_4d_shap_surface(shap_values, output_path):
+    """Interactive surface plot of aggregated SHAP values using Plotly"""
+    import plotly.graph_objects as go
+    import numpy as np
+    import os
+
+    # Ensure HTML format
+    if not output_path.endswith('.html'):
+        output_path = os.path.splitext(output_path)[0] + ".html"
+
+    # Extract SHAP values array
+    shap_vals = np.array(shap_values)
+    shap_vals = np.squeeze(shap_vals)
+
+    # Handle different dimensions
+    if shap_vals.ndim == 4:
+        # Average across spatial dimension: (batch, channels, spatial, time) -> (batch, channels, time)
+        shap_vals = shap_vals.mean(axis=2)
+
+    # Aggregate across samples
+    if shap_vals.ndim == 3:
+        aggregated = np.abs(shap_vals).mean(axis=0)
+    elif shap_vals.ndim == 2:
+        aggregated = np.abs(shap_vals)
+    else:
+        raise ValueError(f"Unsupported SHAP dimension: {shap_vals.ndim}")
+
+    # Ensure proper orientation: (channels, time)
+    if aggregated.shape[0] > aggregated.shape[1]:
+        aggregated = aggregated.T
+
+    # Create grid
+    channels = np.arange(aggregated.shape[0])
+    time_steps = np.arange(aggregated.shape[1])
+    X, Y = np.meshgrid(time_steps, channels)
+
+    # Create Plotly surface plot
+    fig = go.Figure(data=[
+        go.Surface(
+            z=aggregated,
+            x=X,
+            y=Y,
+            colorscale='Viridis',
+            opacity=0.9,
+            contours={"z": {"show": True, "usecolormap": True, "highlightcolor": "limegreen", "project_z": True}}
+        )
+    ])
+
+    fig.update_layout(
+        title='SHAP Value Surface (Avg Across Samples)',
+        scene=dict(
+            xaxis_title='Time Steps',
+            yaxis_title='EMG Channels',
+            zaxis_title='|SHAP Value|',
+            camera=dict(eye=dict(x=1.5, y=-1.5, z=0.5))
+        ),
+        margin=dict(l=0, r=0, b=0, t=40),
+        height=800,
+        width=1000
+    )
+
+    fig.update_layout(coloraxis_colorbar=dict(
+        title="|SHAP|",
+        thickness=15,
+        len=0.5
+    ))
+
+    fig.write_html(output_path, include_plotlyjs='cdn')
+    print(f"✅ Saved interactive SHAP surface plot: {output_path}")
