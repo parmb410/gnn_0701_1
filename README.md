@@ -1,5 +1,5 @@
 
-# GNNIntegrated: EMG-Based Activity Recognition with GNNs, Curriculum Learning, SHAP & Auto-K
+# EMG-Based Activity Recognition with GNNs, Curriculum Learning, SHAP & Auto-K
 
 ## 📌 Overview
 
