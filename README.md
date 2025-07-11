@@ -248,17 +248,3 @@ GNNs proved ineffective for cross-subject EMG classification due to EMG's lack o
 
 ---
 
-## 🪪 License
-
-This project is free for academic and commercial use with attribution.
-
-            @misc{extdd2025,
-              title={GNNIntegrated: EMG-Based Activity Recognition with GNNs, Curriculum Learning, SHAP & Auto-K},
-              author={Rishabh Gupta et al.},
-              year={2025},
-              note={https://github.com/rishabharizona/gnnintegrated}
-            }
-
-## Contact
-
-E-mail- rishabhgupta8218@gmail.com
