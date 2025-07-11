@@ -107,7 +107,7 @@ Abstract: We address the challenge of Out-of-Distribution (OOD) generalization i
 ## 📁 File Structure
 
 ```
-gnnintegrated-main/
+gnn_0701_1-main/
 ├── train.py                  # Main pipeline
 ├── shap_utils.py            # SHAP explainability
 ├── env.yml                  # Environment setup
